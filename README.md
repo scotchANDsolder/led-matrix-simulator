@@ -171,37 +171,6 @@ void drawVisual(PGraphics pg, float t) {
 }
 ```
 
-### 5. Reacting to audio/sensors (bring your own library)
-
-Because `drawVisual()` just draws into a normal `PGraphics`, you can feed it
-from anything Processing can read — the Sound library, Serial input from a
-sensor, OSC, etc. Do your library setup in the sketch's `setup()` as usual,
-then read values inside `drawVisual()`:
-
-```java
-import processing.sound.*;
-AudioIn mic;
-Amplitude amp;
-
-void setup() {
-  size(640, 320);
-  pixelDensity(1);
-  canvas = createGraphics(CANVAS_W, CANVAS_H);
-  noStroke();
-  mic = new AudioIn(this, 0);
-  mic.start();
-  amp = new Amplitude(this);
-  amp.input(mic);
-}
-
-void drawVisual(PGraphics pg, float t) {
-  pg.background(0);
-  float level = amp.analyze();
-  float barHeight = level * pg.height * 8;
-  pg.fill(0, 255, 255);
-  pg.rect(0, pg.height - barHeight, pg.width, barHeight);
-}
-```
 
 ## Adapting for a different panel size
 
