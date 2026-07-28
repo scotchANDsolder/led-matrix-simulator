@@ -7,6 +7,8 @@ resolution using normal Processing calls, and the sketch downsamples and
 renders it back as a grid of round LEDs so you can see roughly how it'll
 look on the real panel.
 
+![Example: two orbiting circles rendered as simulated LEDs](example.gif)
+
 ## Why this exists
 
 Designing pixel art / animations directly at 64x32 is fiddly — shapes,
