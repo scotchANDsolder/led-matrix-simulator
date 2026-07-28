@@ -199,6 +199,66 @@ still reports the logical size, which breaks the downsampling math. Make
 sure `pixelDensity(1);` is called in `setup()` right after `size()` (it's
 included by default in this template).
 
+## Deploying to a Raspberry Pi + physical matrix
+
+Processing can't drive the matrix's GPIO timing directly — that requires
+[rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix), a C++
+library built for exactly this. The setup: the Processing sketch keeps
+running unchanged (same `drawVisual()`, still shows the simulator), and
+streams each downsampled 64x32 frame over a local TCP socket to a small
+Python daemon (`pi/matrix_server.py`) that pushes it to the panel.
+
+Requires the [Adafruit RGB Matrix Bonnet/HAT](https://www.adafruit.com/product/3211)
+wired to the panel.
+
+**1. On the Pi, install rpi-rgb-led-matrix and its Python bindings:**
+
+```bash
+sudo apt-get update && sudo apt-get install -y python3-dev cython3 build-essential
+git clone https://github.com/hzeller/rpi-rgb-led-matrix.git
+cd rpi-rgb-led-matrix
+make build-python PYTHON=$(which python3)
+sudo make install-python PYTHON=$(which python3)
+```
+
+**2. Disable onboard audio** — it uses the same PWM hardware the matrix
+library needs. Add to `/boot/firmware/config.txt` (or `/boot/config.txt`
+on older OS versions):
+
+```
+dtparam=audio=off
+```
+
+Reboot after this change.
+
+**3. Copy this repo to the Pi** (or `git clone` it there), then start the
+receiver — it must be running *before* the Processing sketch, and needs
+root for GPIO access:
+
+```bash
+cd led-matrix-simulator/pi
+sudo python3 matrix_server.py
+```
+
+**4. In `LEDMatrixSim.pde`, set `SEND_TO_HARDWARE = true`**, then run the
+sketch as usual (Processing IDE, or `processing-java --sketch=$(pwd)/LEDMatrixSim --run`
+if running headless over SSH with a display available, e.g. via VNC).
+
+You should now see the same visual on-screen in the simulator window and
+on the physical matrix simultaneously — useful for spotting any mismatch
+between the simulation and the real panel.
+
+**Troubleshooting:**
+- *Flickering/glitching on the panel:* raise `gpio_slowdown` in
+  `matrix_server.py` (try 3 or 4).
+- *Dim or slightly banded colors:* try `hardware_mapping = "adafruit-hat-pwm"`
+  instead of `"adafruit-hat"` — only if you've done the hardware PWM
+  mod described in the rpi-rgb-led-matrix docs.
+- *Sketch can't connect / nothing shows on the panel:* confirm
+  `matrix_server.py` is running and printed "Waiting for Processing
+  sketch..." before you start the sketch, and that `SEND_TO_HARDWARE` is
+  `true`.
+
 ## License
 
 GPLv3 — see [LICENSE](LICENSE). You're free to use, modify, and share this,

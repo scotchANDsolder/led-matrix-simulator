@@ -8,6 +8,16 @@
 //
 // All the visual work happens in drawVisual() near the bottom — that's the
 // only function you should need to touch when designing a new animation.
+//
+// To drive a real HUB75 matrix (e.g. on a Raspberry Pi via the Adafruit
+// RGB Matrix Bonnet/HAT), set SEND_TO_HARDWARE = true. Each frame's 64x32
+// pixels get streamed over a local TCP socket to a receiver process using
+// the rpi-rgb-led-matrix library — see pi/matrix_server.py and the
+// "Deploying to a Raspberry Pi" section in README.md. Processing itself
+// can't drive the panel's GPIO timing directly, so this hand-off is
+// required either way.
+
+import processing.net.*;
 
 // ---- Matrix / canvas configuration ----
 final int MATRIX_W = 64;
@@ -16,6 +26,12 @@ final int SCALE     = 10;                 // pixels per LED, both axes
 final int CANVAS_W  = MATRIX_W * SCALE;   // 640
 final int CANVAS_H  = MATRIX_H * SCALE;   // 320
 final float LED_DIAMETER = SCALE * 0.75;  // leaves a gap so LEDs read as dots
+
+// ---- Hardware output (Raspberry Pi + physical matrix) ----
+final boolean SEND_TO_HARDWARE = false;    // set true when running on the Pi
+final String  MATRIX_HOST      = "127.0.0.1";
+final int     MATRIX_PORT      = 7890;
+Client matrixClient;
 
 PGraphics canvas;
 color[] ledColors = new color[MATRIX_W * MATRIX_H];
@@ -27,6 +43,7 @@ void setup() {
                     // double the pixels[] row stride and break downsample()
   canvas = createGraphics(CANVAS_W, CANVAS_H);
   noStroke();
+  if (SEND_TO_HARDWARE) connectToMatrixServer();
 }
 
 void draw() {
@@ -46,12 +63,37 @@ void draw() {
   // 3. Render the simulated matrix (round LEDs + gaps) to the window.
   background(0);
   renderMatrix(ledColors);
+
+  // 4. Optionally mirror the same frame to a physical matrix.
+  if (SEND_TO_HARDWARE) sendFrameToHardware();
 }
 
 void keyPressed() {
   if (key == 'd' || key == 'D') {
     showRawCanvas = !showRawCanvas;
   }
+}
+
+void connectToMatrixServer() {
+  matrixClient = new Client(this, MATRIX_HOST, MATRIX_PORT);
+}
+
+// Streams the current 64x32 frame as raw RGB bytes (no framing needed —
+// matrix_server.py just reads MATRIX_W*MATRIX_H*3 bytes per frame).
+void sendFrameToHardware() {
+  if (matrixClient == null || !matrixClient.active()) {
+    connectToMatrixServer();
+    if (matrixClient == null || !matrixClient.active()) return;
+  }
+  byte[] frame = new byte[MATRIX_W * MATRIX_H * 3];
+  int i = 0;
+  for (int p = 0; p < ledColors.length; p++) {
+    color c = ledColors[p];
+    frame[i++] = (byte) ((c >> 16) & 0xFF);
+    frame[i++] = (byte) ((c >> 8) & 0xFF);
+    frame[i++] = (byte) (c & 0xFF);
+  }
+  matrixClient.write(frame);
 }
 
 // Averages each SCALE x SCALE block of `src` into one color per LED.
