@@ -2,18 +2,19 @@
 
 A Processing template for designing visuals for a **64x32 RGB LED matrix**
 (e.g. the [Adafruit 2278](https://www.adafruit.com/product/2278), 4mm pitch)
-without needing the physical hardware. Draw at a comfortable 640x320
-resolution using normal Processing calls, and the sketch downsamples and
-renders it back as a grid of round LEDs so you can see roughly how it'll
-look on the real panel.
+without needing the physical hardware, **mounted in portrait orientation**
+(rotated 90° from the panel's native landscape wiring, so it reads as
+32-wide x 64-tall). Draw at a comfortable 320x640 resolution using normal
+Processing calls, and the sketch downsamples and renders it back as a grid
+of round LEDs so you can see roughly how it'll look on the real panel.
 
 ![Example: two orbiting circles rendered as simulated LEDs](example.gif)
 
 ## Why this exists
 
-Designing pixel art / animations directly at 64x32 is fiddly — shapes,
+Designing pixel art / animations directly at 32x64 is fiddly — shapes,
 text, and curves all need to be figured out at a resolution too small to
-work in comfortably. This template lets you draw at 640x320 (10x scale)
+work in comfortably. This template lets you draw at 320x640 (10x scale)
 using the full Processing API (shapes, PImage, PFont, video, whatever you
 like), and handles the downsampling and LED-style rendering for you.
 
@@ -29,19 +30,19 @@ like), and handles the downsampling and LED-style rendering for you.
 3. Press **Run**. You should see two overlapping circles orbiting the
    center, rendered as a grid of dots.
 4. Press **`d`** to toggle between the simulated LED view and the raw
-   640x320 canvas — handy for checking what you're actually drawing before
+   320x640 canvas — handy for checking what you're actually drawing before
    it gets downsampled.
 
 ## How it works
 
 ```
-drawVisual(canvas, t)     draw your visual at 640x320 into an offscreen PGraphics
+drawVisual(canvas, t)     draw your visual at 320x640 into an offscreen PGraphics
         │
         ▼
-   downsample()           average every 10x10 block down to one color (64x32 total)
+   downsample()           average every 10x10 block down to one color (32x64 total)
         │
         ▼
-   renderMatrix()          draw each of the 64x32 colors as a round "LED" with
+   renderMatrix()          draw each of the 32x64 colors as a round "LED" with
                             a dark gap around it, mimicking the real panel
 ```
 
@@ -58,7 +59,7 @@ void drawVisual(PGraphics pg, float t) {
 }
 ```
 
-- `pg` — the 640x320 offscreen canvas. Use the same drawing calls you'd use
+- `pg` — the 320x640 offscreen canvas. Use the same drawing calls you'd use
   in a normal sketch, just prefixed with `pg.` (`pg.fill()`, `pg.rect()`,
   `pg.text()`, `pg.image()`, etc.)
 - `t` — seconds elapsed since the sketch started (`frameCount / 60.0`),
@@ -73,14 +74,24 @@ know what you'll get.
 
 | Setting        | Value |
 |----------------|-------|
-| Matrix size    | 64 x 32 LEDs |
-| Canvas size    | 640 x 320 px |
+| Matrix size    | 32 x 64 LEDs (portrait, as mounted) |
+| Canvas size    | 320 x 640 px |
 | Scale factor   | 10 px per LED |
+| Panel native wiring | 64 x 32 (unrotated HUB75 layout) |
 
 These live as constants (`MATRIX_W`, `MATRIX_H`, `SCALE`) at the top of
 `LEDMatrixSim.pde` if you're adapting this for a differently-sized panel —
 just change them and everything downstream (canvas size, downsampling,
 rendering) adjusts automatically.
+
+`MATRIX_W`/`MATRIX_H` describe the panel **as mounted**, not its native
+wiring — the panel itself is still 64 cols x 32 rows internally.
+`pi/matrix_server.py` rotates each frame back to that native layout before
+writing it out, so it's the one place that needs to know about both the
+portrait and native orientations (see "Deploying to a Raspberry Pi"
+below). If you're using a panel that's natively wired 32x64 instead of a
+rotated 64x32, skip the rotation logic in `matrix_server.py` and set
+`options.rows`/`options.cols` to match your panel directly.
 
 ## Tutorials
 
@@ -121,14 +132,17 @@ void drawVisual(PGraphics pg, float t) {
 
 ### 3. Text / scrolling marquee
 
-Text is legible on a 64x32 matrix only in short bursts or scrolled — this
+Text is legible on a 32x64 matrix only in short bursts or scrolled — this
 scrolls a message right to left.
 
 ```java
 PFont font;
 
+void settings() {
+  size(CANVAS_W, CANVAS_H);
+}
+
 void setup() {
-  size(640, 320);
   pixelDensity(1);
   canvas = createGraphics(CANVAS_W, CANVAS_H);
   noStroke();
@@ -150,15 +164,18 @@ void drawVisual(PGraphics pg, float t) {
 ### 4. Using pixel/image data
 
 Load a small image and draw it directly — since the canvas is 10x the
-matrix resolution, a 64x32 source image can be drawn at 640x320 with
+matrix resolution, a 32x64 source image can be drawn at 320x640 with
 `pg.noSmooth()` for a crisp blocky look, or a larger image can be scaled
 down for a smoother, anti-aliased result once downsampled.
 
 ```java
 PImage img;
 
+void settings() {
+  size(CANVAS_W, CANVAS_H);
+}
+
 void setup() {
-  size(640, 320);
   pixelDensity(1);
   canvas = createGraphics(CANVAS_W, CANVAS_H);
   noStroke();
@@ -205,8 +222,9 @@ Processing can't drive the matrix's GPIO timing directly — that requires
 [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix), a C++
 library built for exactly this. The setup: the Processing sketch keeps
 running unchanged (same `drawVisual()`, still shows the simulator), and
-streams each downsampled 64x32 frame over a local TCP socket to a small
-Python daemon (`pi/matrix_server.py`) that pushes it to the panel.
+streams each downsampled 32x64 portrait frame over a local TCP socket to a
+small Python daemon (`pi/matrix_server.py`) that rotates it back to the
+panel's native 64x32 layout and pushes it out.
 
 Requires the [Adafruit RGB Matrix Bonnet/HAT](https://www.adafruit.com/product/3211)
 wired to the panel.
@@ -258,6 +276,9 @@ between the simulation and the real panel.
   `matrix_server.py` is running and printed "Waiting for Processing
   sketch..." before you start the sketch, and that `SEND_TO_HARDWARE` is
   `true`.
+- *Image on the panel is upside-down or mirrored:* the panel is mounted
+  rotated the opposite way from what `matrix_server.py` assumes — flip
+  `ROTATE_CW` at the top of that file and restart it.
 
 ## License
 

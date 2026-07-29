@@ -1,8 +1,10 @@
 // LED Matrix Simulator — Adafruit 2278 (64x32 RGB matrix, 4mm pitch)
+// mounted in PORTRAIT orientation (rotated 90° from the panel's native
+// landscape wiring).
 //
-// Draw your visuals at full resolution into `canvas` (640x320) using any
+// Draw your visuals at full resolution into `canvas` (320x640) using any
 // standard Processing drawing calls, exactly as if it were the main window.
-// Every frame this gets block-averaged down to 64x32 and rendered back out
+// Every frame this gets block-averaged down to 32x64 and rendered back out
 // as a grid of round LEDs with dark gaps, approximating how it'll look on
 // the real panel.
 //
@@ -10,21 +12,25 @@
 // only function you should need to touch when designing a new animation.
 //
 // To drive a real HUB75 matrix (e.g. on a Raspberry Pi via the Adafruit
-// RGB Matrix Bonnet/HAT), set SEND_TO_HARDWARE = true. Each frame's 64x32
-// pixels get streamed over a local TCP socket to a receiver process using
-// the rpi-rgb-led-matrix library — see pi/matrix_server.py and the
-// "Deploying to a Raspberry Pi" section in README.md. Processing itself
-// can't drive the panel's GPIO timing directly, so this hand-off is
-// required either way.
+// RGB Matrix Bonnet/HAT), set SEND_TO_HARDWARE = true. Each frame's 32x64
+// portrait pixels get streamed over a local TCP socket to a receiver
+// process using the rpi-rgb-led-matrix library — see pi/matrix_server.py,
+// which rotates each frame back to the panel's native 64x32 wiring before
+// pushing it out. See the "Deploying to a Raspberry Pi" section in
+// README.md. Processing itself can't drive the panel's GPIO timing
+// directly, so this hand-off is required either way.
 
 import processing.net.*;
 
 // ---- Matrix / canvas configuration ----
-final int MATRIX_W = 64;
-final int MATRIX_H = 32;
+// MATRIX_W/MATRIX_H describe the panel as MOUNTED (portrait), not its
+// native wiring — the physical HUB75 panel is still 64 cols x 32 rows;
+// pi/matrix_server.py rotates frames back to that native layout.
+final int MATRIX_W = 32;
+final int MATRIX_H = 64;
 final int SCALE     = 10;                 // pixels per LED, both axes
-final int CANVAS_W  = MATRIX_W * SCALE;   // 640
-final int CANVAS_H  = MATRIX_H * SCALE;   // 320
+final int CANVAS_W  = MATRIX_W * SCALE;   // 320
+final int CANVAS_H  = MATRIX_H * SCALE;   // 640
 final float LED_DIAMETER = SCALE * 0.75;  // leaves a gap so LEDs read as dots
 
 // ---- Hardware output (Raspberry Pi + physical matrix) ----
@@ -37,8 +43,15 @@ PGraphics canvas;
 color[] ledColors = new color[MATRIX_W * MATRIX_H];
 boolean showRawCanvas = false; // press 'd' to toggle
 
+// size() needs literal-looking constant expressions to size the sketch
+// window before setup() runs, so it lives in settings() rather than
+// setup() — this lets CANVAS_W/CANVAS_H (and therefore MATRIX_W/MATRIX_H)
+// drive the window size instead of a hardcoded literal.
+void settings() {
+  size(CANVAS_W, CANVAS_H);
+}
+
 void setup() {
-  size(640, 320);
   pixelDensity(1); // force 1:1 pixel buffer; Retina displays otherwise
                     // double the pixels[] row stride and break downsample()
   canvas = createGraphics(CANVAS_W, CANVAS_H);
@@ -57,7 +70,7 @@ void draw() {
     return;
   }
 
-  // 2. Downsample 640x320 -> 64x32 by averaging each 10x10 block.
+  // 2. Downsample 320x640 -> 32x64 by averaging each 10x10 block.
   downsample(canvas, ledColors);
 
   // 3. Render the simulated matrix (round LEDs + gaps) to the window.
@@ -78,7 +91,7 @@ void connectToMatrixServer() {
   matrixClient = new Client(this, MATRIX_HOST, MATRIX_PORT);
 }
 
-// Streams the current 64x32 frame as raw RGB bytes (no framing needed —
+// Streams the current 32x64 portrait frame as raw RGB bytes (no framing needed —
 // matrix_server.py just reads MATRIX_W*MATRIX_H*3 bytes per frame).
 void sendFrameToHardware() {
   if (matrixClient == null || !matrixClient.active()) {
@@ -133,7 +146,7 @@ void renderMatrix(color[] colors) {
 }
 
 // ---- Your visual goes here ----
-// `pg` is the 640x320 canvas — draw into it with pg.background(), pg.fill(),
+// `pg` is the 320x640 portrait canvas — draw into it with pg.background(), pg.fill(),
 // pg.ellipse(), pg.rect(), etc. (same API as the main sketch, just prefixed).
 // `t` is seconds elapsed, handy for animation.
 void drawVisual(PGraphics pg, float t) {
